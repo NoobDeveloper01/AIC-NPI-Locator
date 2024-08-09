@@ -161,3 +161,47 @@ def parse_npi_data(npi_data):
     parsed_data["Status"] = "Found" if parsed_data["NPI ID"] else "Not Found"
 
     return pd.DataFrame([parsed_data])
+
+
+def get_npi_by_details(npi_number=None, npi_type=None, taxonomy_description=None, provider_first_name=None, provider_last_name=None, org_name=None, authorized_official_first_name=None, authorized_official_last_name=None, city=None, state=None, country=None, postal_code=None, address_type=None):
+    url = "https://npiregistry.cms.hhs.gov/api/?version=2.1"
+
+    if npi_number:
+        url += f"&number={npi_number}"
+    if npi_type and npi_type != "Any":
+        url += f"&enumeration_type={npi_type}"
+    if taxonomy_description:
+        url += f"&taxonomy_description={taxonomy_description}"
+    if provider_first_name:
+        url += f"&first_name={provider_first_name}"
+    if provider_last_name:
+        url += f"&last_name={provider_last_name}"
+    if org_name:
+        url += f"&organization_name={org_name}"
+    if authorized_official_first_name:
+        url += f"&authorized_official_first_name={authorized_official_first_name}"
+    if authorized_official_last_name:
+        url += f"&authorized_official_last_name={authorized_official_last_name}"
+    if city:
+        url += f"&city={city}"
+    if state:
+        url += f"&state={state}"
+    if country and country != "Any":
+        url += f"&country_code={country}"
+    if postal_code:
+        url += f"&postal_code={postal_code}"
+    if address_type and address_type != "Any":
+        url += f"&address_purpose={address_type}"
+
+    try:
+        response = requests.get(url)
+        response.raise_for_status()
+        data = response.json()
+        if "result_count" in data and data["result_count"] > 0:
+            return data["results"]
+        else:
+            return []
+    except requests.exceptions.RequestException as e:
+        return []
+    except json.JSONDecodeError as e:
+        return []

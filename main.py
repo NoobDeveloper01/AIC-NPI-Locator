@@ -3,9 +3,9 @@ import pandas as pd
 import plotly.express as px
 from streamlit_option_menu import option_menu
 
-from npi_functions import get_npi_details, parse_npi_data,blank_npi_data
+from npi_functions import get_npi_details, parse_npi_data, blank_npi_data, get_npi_by_details
 from aic_functions import fetch_address, process_data
-from utils import get_coordinates, set_page_config, apply_custom_css,get_coordinates_multiple
+from utils import get_coordinates, set_page_config, apply_custom_css, get_coordinates_multiple
 
 # Set page configuration
 set_page_config()
@@ -24,7 +24,7 @@ with st.sidebar:
         default_index=0,
         styles={
             "container": {"padding": "5!important", "background-color": "#2C2C2C"},
-            "icon": {"color": "#4CAF50", "font-size": "25px"}, 
+            "icon": {"color": "#4CAF50", "font-size": "25px"},
             "nav-link": {"font-size": "16px", "text-align": "left", "margin":"0px", "--hover-color": "#3E3E3E"},
             "nav-link-selected": {"background-color": "#3E3E3E"},
         }
@@ -33,11 +33,12 @@ with st.sidebar:
 if selected == "NPI Address Locator":
     st.header("NPI Address Locator")
     st.write("Enter the NPI ID or upload a file to get the address.")
-    
+
     # Option to upload file or enter NPI ID
-    upload_option = st.radio("Choose input method:", ("Upload Excel/CSV file", "Enter single NPI ID"))
+    upload_option = st.radio("Choose input method:", ("Upload Excel/CSV file", "Enter single NPI ID", "Advanced Search"))
 
     npi_ids = []
+    advanced_details = {}
 
     if upload_option == "Upload Excel/CSV file":
         uploaded_file = st.file_uploader("Upload your Excel/CSV file", type=["xlsx", "csv"])
@@ -54,6 +55,43 @@ if selected == "NPI Address Locator":
         single_npi = st.text_input("Enter NPI ID")
         if single_npi:
             npi_ids = [single_npi]
+    elif upload_option == "Advanced Search":
+        col1, col2, col3 = st.columns(3)
+        with col1:
+            npi_number = st.text_input("NPI Number")
+            provider_first_name = st.text_input("Provider First Name")
+            org_name = st.text_input("Organization Name (LBN, DBA, or Other)")
+            city = st.text_input("City")
+            postal_code = st.text_input("Postal Code")
+
+        with col2:
+            npi_type = st.selectbox("NPI Type", ["Any", "Individual", "Organization"])
+            provider_last_name = st.text_input("Provider Last Name")
+            authorized_official_first_name = st.text_input("Authorized Official First Name")
+            state = st.text_input("State")
+            address_type = st.selectbox("Address Type", ["Any", "Primary Location", "Secondary Location"])
+
+        with col3:
+            taxonomy_description = st.text_input("Taxonomy Description")
+            authorized_official_last_name = st.text_input("Authorized Official Last Name")
+            country = st.text_input("Country")
+
+        if npi_number or npi_type or taxonomy_description or provider_first_name or provider_last_name or org_name or authorized_official_first_name or authorized_official_last_name or city or state or country or postal_code or address_type:
+            advanced_details = {
+                "npi_number": npi_number,
+                "npi_type": npi_type,
+                "taxonomy_description": taxonomy_description,
+                "provider_first_name": provider_first_name,
+                "provider_last_name": provider_last_name,
+                "org_name": org_name,
+                "authorized_official_first_name": authorized_official_first_name,
+                "authorized_official_last_name": authorized_official_last_name,
+                "city": city,
+                "state": state,
+                "country": country,
+                "postal_code": postal_code,
+                "address_type": address_type
+            }
 
     if st.button("🔍 Search"):
         if npi_ids:
@@ -64,25 +102,33 @@ if selected == "NPI Address Locator":
 
                     if 'created_epoch' in npi_details.keys():
                         parsed_data = parse_npi_data(npi_details)
-                        result_data = pd.concat([result_data, parsed_data], ignore_index=True)
-                    
                     else:
                         parsed_data = blank_npi_data(npi_details)
-                        result_data = pd.concat([result_data, parsed_data], ignore_index=True)
+
+                    result_data = pd.concat([result_data, parsed_data], ignore_index=True)
 
             if not result_data.empty:
+                result_data['Full Address'] = result_data.apply(
+                    lambda row: f"{row['Address_1_Address1']}, {row['Address_1_City']}, {row['Address_1_State']} {row['Address_1_Postal Code']}",
+                    axis=1
+                )
+                result_data['Coordinates'] = result_data['Full Address'].apply(get_coordinates)
+                result_data['Latitude'] = result_data['Coordinates'].apply(lambda x: x[0] if x else None)
+                result_data['Longitude'] = result_data['Coordinates'].apply(lambda x: x[1] if x else None)
+
                 st.success(f"Found {len(result_data)} NPI details.")
-                
+                # Additional code for displaying results or further processing goes here
+
                 # Display results in an interactive table
                 st.write("NPI Details:")
                 st.dataframe(result_data)
 
                 # Create a map with all locations
                 st.subheader("NPI Locations")
-                
+
                 # Filter out rows with status not found
                 result_data = result_data[result_data['Status'] != 'Not Found']
-                
+
                 if not result_data.empty:
                     # Get coordinates for each address
                     with st.spinner('Generating map...'):
@@ -90,20 +136,112 @@ if selected == "NPI Address Locator":
                         result_data['Coordinates'] = result_data['Full Address'].apply(get_coordinates)
                         result_data['Latitude'] = result_data['Coordinates'].apply(lambda x: x[0] if x else None)
                         result_data['Longitude'] = result_data['Coordinates'].apply(lambda x: x[1] if x else None)
-                        
+
                         # Filter out rows with no coordinates
                         map_data = result_data.dropna(subset=['Latitude', 'Longitude'])
-                        
+
                         if not map_data.empty:
-                            fig = px.scatter_mapbox(map_data, 
-                                                    lat="Latitude", 
-                                                    lon="Longitude", 
+                            fig = px.scatter_mapbox(map_data,
+                                                    lat="Latitude",
+                                                    lon="Longitude",
                                                     hover_name="NPI ID",
                                                     hover_data=["Address_1_Address1", "Address_1_City", "Address_1_State", "Address_1_Postal Code"],
-                                                    zoom=3, 
-                                                    mapbox_style="open-street-map")
+                                                    zoom=3,
+                                                    mapbox_style="open-street-map",
+                                                    color_discrete_sequence=["green"], # Set marker color
+                                                    size_max=15)
+
+                            fig.update_traces(marker=dict(size=15, symbol='circle', opacity=0.8))
+
                             fig.update_layout(
-                                paper_bgcolor="rgba(0,0,0,0)", 
+                                paper_bgcolor="rgba(0,0,0,0)",
+                                plot_bgcolor="rgba(0,0,0,0)",
+                                mapbox=dict(
+                                    center=dict(lat=map_data['Latitude'].mean(), lon=map_data['Longitude'].mean()),
+                                    zoom=3
+                                )
+                            )
+                            st.plotly_chart(fig)
+                        else:
+                            st.warning("Could not generate map due to missing location data.")
+                else:
+                    st.warning("Could not generate map due to missing location data.")
+
+                # Download the results
+                csv = result_data.to_csv(index=False).encode('utf-8')
+                st.download_button(
+                    label="📥 Download data as CSV",
+                    data=csv,
+                    file_name='npi_details.csv',
+                    mime='text/csv'
+                )
+            else:
+                st.warning("No valid NPI details found for the given input(s).")
+        elif advanced_details:
+            with st.spinner('Fetching NPI details...'):
+                result_data = pd.DataFrame()
+                npi_details_list = get_npi_by_details(
+                    advanced_details.get('npi_number'),
+                    advanced_details.get('npi_type'),
+                    advanced_details.get('taxonomy_description'),
+                    advanced_details.get('provider_first_name'),
+                    advanced_details.get('provider_last_name'),
+                    advanced_details.get('org_name'),
+                    advanced_details.get('authorized_official_first_name'),
+                    advanced_details.get('authorized_official_last_name'),
+                    advanced_details.get('city'),
+                    advanced_details.get('state'),
+                    advanced_details.get('country'),
+                    advanced_details.get('postal_code'),
+                    advanced_details.get('address_type')
+                )
+
+                if npi_details_list:
+                    for npi_details in npi_details_list:
+                        parsed_data = parse_npi_data(npi_details)
+                        result_data = pd.concat([result_data, parsed_data], ignore_index=True)
+                else:
+                    st.warning("No valid NPI details found for the given input(s).")
+
+            if not result_data.empty:
+                st.success(f"Found {len(result_data)} NPI details.")
+
+                # Display results in an interactive table
+                st.write("NPI Details:")
+                st.dataframe(result_data)
+
+                # Create a map with all locations
+                st.subheader("NPI Locations")
+
+                # Filter out rows with status not found
+                result_data = result_data[result_data['Status'] != 'Not Found']
+
+                if not result_data.empty:
+                    # Get coordinates for each address
+                    with st.spinner('Generating map...'):
+                        result_data['Full Address'] = result_data['Address_1_Address1'] + ', ' + result_data['Address_1_City'] + ', ' + result_data['Address_1_State'] + ' ' + result_data['Address_1_Postal Code']
+                        result_data['Coordinates'] =                        result_data['Coordinates'].apply(get_coordinates)
+                        result_data['Latitude'] = result_data['Coordinates'].apply(lambda x: x[0] if x else None)
+                        result_data['Longitude'] = result_data['Coordinates'].apply(lambda x: x[1] if x else None)
+
+                        # Filter out rows with no coordinates
+                        map_data = result_data.dropna(subset=['Latitude', 'Longitude'])
+
+                        if not map_data.empty:
+                            fig = px.scatter_mapbox(map_data,
+                                                    lat="Latitude",
+                                                    lon="Longitude",
+                                                    hover_name="NPI ID",
+                                                    hover_data=["Address_1_Address1", "Address_1_City", "Address_1_State", "Address_1_Postal Code"],
+                                                    zoom=3,
+                                                    mapbox_style="open-street-map",
+                                                    color_discrete_sequence=["green"],  # Set marker color
+                                                    size_max=15)
+
+                            fig.update_traces(marker=dict(size=15, symbol='circle', opacity=0.8))
+
+                            fig.update_layout(
+                                paper_bgcolor="rgba(0,0,0,0)",
                                 plot_bgcolor="rgba(0,0,0,0)",
                                 mapbox=dict(
                                     center=dict(lat=map_data['Latitude'].mean(), lon=map_data['Longitude'].mean()),
@@ -127,12 +265,11 @@ if selected == "NPI Address Locator":
             else:
                 st.warning("No valid NPI details found for the given input(s).")
         else:
-            st.warning("Please enter an NPI ID or upload a file before searching.")
-
+            st.warning("Please enter an NPI ID, upload a file, or enter individual or organization details before searching.")
 elif selected == "AIC Address Locator":
     st.header("AIC Address Locator")
     st.write("Enter the AIC Name and Location/ZIP code or upload a file to get the address.")
-    
+
     # Option to upload file or enter single search
     upload_option = st.radio("Choose input method:", ("Upload Excel/CSV file", "Enter single AIC Name and Location ZIP"))
 
@@ -178,7 +315,7 @@ elif selected == "AIC Address Locator":
 
             if results:
                 results_df = pd.DataFrame(results)
-                
+
                 # Display results in tabular form
                 st.subheader("Search Results")
                 st.dataframe(results_df)
@@ -190,15 +327,20 @@ elif selected == "AIC Address Locator":
                 if not map_df.empty:
                     # Display interactive map
                     st.subheader("Location Map")
-                    fig = px.scatter_mapbox(map_df, 
-                                            lat="Latitude", 
-                                            lon="Longitude", 
-                                            zoom=3, 
-                                            hover_name="AIC Name and Location/ZIP", 
-                                            hover_data=["Address"], 
-                                            mapbox_style="open-street-map")
+                    fig = px.scatter_mapbox(map_df,
+                                            lat="Latitude",
+                                            lon="Longitude",
+                                            zoom=3,
+                                            hover_name="AIC Name and Location/ZIP",
+                                            hover_data=["Address"],
+                                            mapbox_style="open-street-map",
+                                            color_discrete_sequence=["green"], # Set marker color
+                                            size_max=15) # Set maximum marker size
+
+                    fig.update_traces(marker=dict(size=15, symbol='circle', opacity=0.8))
+
                     fig.update_layout(
-                        paper_bgcolor="rgba(0,0,0,0)", 
+                        paper_bgcolor="rgba(0,0,0,0)",
                         plot_bgcolor="rgba(0,0,0,0)",
                         mapbox=dict(
                             center=dict(lat=map_df['Latitude'].mean(), lon=map_df['Longitude'].mean()),
@@ -221,6 +363,7 @@ elif selected == "AIC Address Locator":
                 st.error("No addresses found for the given input(s).")
         else:
             st.warning("Please enter an AIC Name and Location/ZIP or upload a file.")
+
 # Footer
 st.markdown("---")
 st.markdown("Created with ❤️ by Cognizant")
