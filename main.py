@@ -101,12 +101,7 @@ if selected == "NPI Address Locator":
                                                     hover_name="NPI ID",
                                                     hover_data=["Address_1_Address1", "Address_1_City", "Address_1_State", "Address_1_Postal Code"],
                                                     zoom=3, 
-                                                    mapbox_style="open-street-map",
-                                                    color_discrete_sequence=["green"], # Set marker color
-                                                    size_max=15)
-
-                            fig.update_traces(marker=dict(size=15, symbol='circle', opacity=0.8))
-                            
+                                                    mapbox_style="open-street-map")
                             fig.update_layout(
                                 paper_bgcolor="rgba(0,0,0,0)", 
                                 plot_bgcolor="rgba(0,0,0,0)",
@@ -201,12 +196,7 @@ elif selected == "AIC Address Locator":
                                             zoom=3, 
                                             hover_name="AIC Name and Location/ZIP", 
                                             hover_data=["Address"], 
-                                            mapbox_style="open-street-map",
-                                            color_discrete_sequence=["green"], # Set marker color
-                                            size_max=15) # Set maximum marker size
-
-                    fig.update_traces(marker=dict(size=15, symbol='circle', opacity=0.8))
-
+                                            mapbox_style="open-street-map")
                     fig.update_layout(
                         paper_bgcolor="rgba(0,0,0,0)", 
                         plot_bgcolor="rgba(0,0,0,0)",
